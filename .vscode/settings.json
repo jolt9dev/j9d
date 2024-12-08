@@ -1,0 +1,7 @@
+{
+    "gopls": {
+        "ui.diagnostic.analyses": {
+            "unusedparams": false
+        }
+    }
+}
