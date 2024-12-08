@@ -6,8 +6,8 @@ require (
 	filippo.io/age v1.2.0
 	github.com/getsops/sops/v3 v3.9.2
 	github.com/joho/godotenv v1.5.1
-	github.com/jolt9dev/jolt9 v0.0.0-20241205054151-561eda371e6a
 	github.com/kevinburke/ssh_config v1.2.0
+	github.com/m1/go-generate-password v0.2.0
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.5.0
 	github.com/spf13/cobra v1.8.1
@@ -15,6 +15,7 @@ require (
 	golang.org/x/crypto v0.30.0
 	golang.org/x/sys v0.28.0
 	golang.org/x/term v0.27.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -131,5 +132,4 @@ require (
 	google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

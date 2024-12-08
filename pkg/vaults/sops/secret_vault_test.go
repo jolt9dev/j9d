@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"filippo.io/age"
+	"github.com/jolt9dev/j9d/pkg/vaults/sops"
 	fs "github.com/jolt9dev/j9d/pkg/xfs"
-	"github.com/jolt9dev/jolt9/pkg/vaults/sops"
 	"github.com/stretchr/testify/assert"
 )
 

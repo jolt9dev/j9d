@@ -8,7 +8,7 @@ import (
 
 	"github.com/getsops/sops/v3/decrypt"
 	"github.com/joho/godotenv"
-	"github.com/jolt9dev/jolt9/pkg/vaults"
+	"github.com/jolt9dev/j9d/pkg/vaults"
 )
 
 type SopsSecretVault struct {
