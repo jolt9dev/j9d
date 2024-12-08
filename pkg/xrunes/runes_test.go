@@ -1,4 +1,4 @@
-package runes_test
+package xrunes_test
 
 import (
 	"testing"
