@@ -2,8 +2,8 @@
 
 build:
     @echo "Building justfile"
-    @just build
+    @go build
 
 test:
     @echo "Running tests"
-    @just test ./...
+    @go test ./...
