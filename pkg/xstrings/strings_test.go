@@ -1,4 +1,4 @@
-package strings_test
+package xstrings_test
 
 import (
 	"testing"
