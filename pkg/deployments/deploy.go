@@ -120,7 +120,13 @@ func deployCompose(ctx *ctxs.ExecContext) error {
 	return nil
 }
 
-func Remove(params DeployParams) error {
+type RemoveParams struct {
+	Workspace string
+	Project   string
+	File      string
+}
+
+func Remove(params RemoveParams) error {
 
 	ctx, err := ctxs.Load(params.File)
 	if err != nil {
