@@ -3,35 +3,26 @@ package sops
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 
-	"github.com/getsops/sops/v3/decrypt"
 	"github.com/joho/godotenv"
 	"github.com/jolt9dev/j9d/pkg/vaults"
+	"github.com/jolt9dev/j9d/pkg/xexec"
+	"github.com/jolt9dev/j9d/pkg/xfs"
 )
 
-type SopsSecretVault struct {
+type SopsCliSecretVault struct {
 	params   SopsSecretVaultParams
 	fileType string
 	data     map[string]interface{}
 	loaded   bool
 }
 
-type SopsSecretVaultParams struct {
-	File         string
-	ConfileFile  string
-	Age          *SopsAgeParams
-	Kms          *SopsKmsParams
-	AzureKvUri   string
-	VaultUri     string
-	PgpPublicKey string
-	Driver       string
-	Indent       int
-}
-
 type SopsAgeParams struct {
-	Recipients []string
+	Recipients string
+	KeyFile    string
 	Key        string
 }
 
@@ -41,12 +32,27 @@ type SopsKmsParams struct {
 	EncryptionContext string
 }
 
-func New(params SopsSecretVaultParams) *SopsSecretVault {
+type SopsSecretVaultParams struct {
+	File       string
+	ConfigFile string
+	Age        *SopsAgeParams
+	KmsArns    string
+	// the URI for the azure key vault and the key name
+	AzureKvUri string
+	// The transit engine URI for hashicorp vault
+	VaultUri        string
+	GcpKmsUri       string
+	PgpFingerprints string
+	Driver          string
+	Indent          int
+}
+
+func New(params SopsSecretVaultParams) *SopsCliSecretVault {
 	if params.Driver == "" {
 		params.Driver = "age"
 	}
 
-	return &SopsSecretVault{
+	return &SopsCliSecretVault{
 		params:   params,
 		fileType: "dotenv",
 	}
@@ -60,13 +66,13 @@ func init() {
 	println(v)
 }
 
-func (s *SopsSecretVault) LoadData(data map[string]interface{}) error {
+func (s *SopsCliSecretVault) LoadData(data map[string]interface{}) error {
 	s.data = data
 	s.loaded = true
 	return nil
 }
 
-func (s *SopsSecretVault) GetSecretValue(key string, params *vaults.GetSecretValueParams) (string, error) {
+func (s *SopsCliSecretVault) GetSecretValue(key string, params *vaults.GetSecretValueParams) (string, error) {
 	if !s.loaded {
 		err := s.Decrypt()
 		if err != nil {
@@ -86,7 +92,7 @@ func (s *SopsSecretVault) GetSecretValue(key string, params *vaults.GetSecretVal
 	}
 }
 
-func (s *SopsSecretVault) ListSecretNames(params *vaults.ListSecretNamesParams) ([]string, error) {
+func (s *SopsCliSecretVault) ListSecretNames(params *vaults.ListSecretNamesParams) ([]string, error) {
 	if !s.loaded {
 		err := s.Decrypt()
 		if err != nil {
@@ -106,7 +112,7 @@ func (s *SopsSecretVault) ListSecretNames(params *vaults.ListSecretNamesParams) 
 	return nil, fmt.Errorf("unsupported file type: %s", s.fileType)
 }
 
-func (s *SopsSecretVault) BatchGetSecretValues(keys []string, params *vaults.GetSecretValueParams) (map[string]string, error) {
+func (s *SopsCliSecretVault) BatchGetSecretValues(keys []string, params *vaults.GetSecretValueParams) (map[string]string, error) {
 	values := map[string]string{}
 	for _, key := range keys {
 		v, err := s.GetSecretValue(key, params)
@@ -120,7 +126,7 @@ func (s *SopsSecretVault) BatchGetSecretValues(keys []string, params *vaults.Get
 	return values, nil
 }
 
-func (s *SopsSecretVault) MapSecretValues(query map[string]string, params *vaults.GetSecretValueParams) (map[string]string, error) {
+func (s *SopsCliSecretVault) MapSecretValues(query map[string]string, params *vaults.GetSecretValueParams) (map[string]string, error) {
 	keys := make([]string, 0, len(query))
 	for k := range query {
 		keys = append(keys, k)
@@ -141,7 +147,7 @@ func (s *SopsSecretVault) MapSecretValues(query map[string]string, params *vault
 	return values, nil
 }
 
-func (s *SopsSecretVault) SetSecretValue(key, value string, params *vaults.SetSecretValueParams) error {
+func (s *SopsCliSecretVault) SetSecretValue(key, value string, params *vaults.SetSecretValueParams) error {
 	e := s.setSecretValue(key, value)
 	if e != nil {
 		return e
@@ -150,7 +156,7 @@ func (s *SopsSecretVault) SetSecretValue(key, value string, params *vaults.SetSe
 	return s.Encrypt()
 }
 
-func (s *SopsSecretVault) setSecretValue(key, value string) error {
+func (s *SopsCliSecretVault) setSecretValue(key, value string) error {
 	if !s.loaded {
 		err := s.Decrypt()
 		if err != nil {
@@ -167,7 +173,7 @@ func (s *SopsSecretVault) setSecretValue(key, value string) error {
 	}
 }
 
-func (s *SopsSecretVault) BatchSetSecretValues(values map[string]string, params *vaults.SetSecretValueParams) error {
+func (s *SopsCliSecretVault) BatchSetSecretValues(values map[string]string, params *vaults.SetSecretValueParams) error {
 	if len(values) == 0 {
 		return nil
 	}
@@ -182,7 +188,7 @@ func (s *SopsSecretVault) BatchSetSecretValues(values map[string]string, params 
 	return s.Encrypt()
 }
 
-func (s *SopsSecretVault) DeleteSecret(key string, params *vaults.DeleteSecretParams) error {
+func (s *SopsCliSecretVault) DeleteSecret(key string, params *vaults.DeleteSecretParams) error {
 	if !s.loaded {
 		err := s.Decrypt()
 		if err != nil {
@@ -206,11 +212,117 @@ func (s *SopsSecretVault) DeleteSecret(key string, params *vaults.DeleteSecretPa
 	return nil
 }
 
-func (s *SopsSecretVault) Encrypt() error {
+func (s *SopsCliSecretVault) Decrypt() error {
+
+	vars := map[string]string{}
 
 	if s.fileType != "dotenv" {
 		return fmt.Errorf("unsupported file type: %s", s.fileType)
 	}
+
+	switch s.params.Driver {
+	case "age":
+		if s.params.Age != nil {
+			if s.params.Age.KeyFile != "" {
+				vars["SOPS_AGE_KEY_FILE"] = s.params.Age.KeyFile
+			} else if s.params.Age.Key != "" {
+				vars["SOPS_AGE_KEY"] = s.params.Age.Key
+			}
+		}
+	}
+
+	args := []string{"decrypt"}
+
+	if s.params.ConfigFile != "" {
+		args = append(args, "--config", s.params.ConfigFile)
+	}
+
+	args = append(args, s.params.File)
+
+	cmd := xexec.New("sops", args...)
+	cmd.WithEnvMap(vars)
+	cmd.WithCwd(filepath.Dir(s.params.File))
+
+	out, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("error decrypting file: %s", out.ErrorText())
+	}
+
+	data := out.Stdout
+
+	kv, err := godotenv.UnmarshalBytes(data)
+	if err != nil {
+		return err
+	}
+
+	s.data = map[string]interface{}{}
+	for k, v := range kv {
+		s.data[k] = v
+	}
+
+	return nil
+}
+
+func (s *SopsCliSecretVault) Encrypt() error {
+
+	if s.fileType != "dotenv" {
+		return fmt.Errorf("unsupported file type: %s", s.fileType)
+	}
+
+	vars := map[string]string{}
+	args := []string{"-e"}
+
+	if s.params.ConfigFile != "" {
+		args = append(args, "--config", s.params.ConfigFile)
+	}
+
+	switch s.params.Driver {
+	case "age":
+		if s.params.Age != nil {
+			if len(s.params.Age.Recipients) > 0 {
+				args = append(args, "--age", s.params.Age.Recipients)
+			}
+
+			if s.params.Age.KeyFile != "" {
+				vars["SOPS_AGE_KEY_FILE"] = s.params.Age.KeyFile
+			} else if s.params.Age.Key != "" {
+				vars["SOPS_AGE_KEY"] = s.params.Age.Key
+			}
+		}
+
+	case "azure":
+	case "azkv":
+	case "azure-kv":
+		if s.params.AzureKvUri != "" {
+			args = append(args, "--azure-kv", s.params.AzureKvUri)
+		}
+	case "vault":
+	case "hc-vault-transit":
+		if s.params.VaultUri != "" {
+			args = append(args, "--hc-vault-transit", s.params.VaultUri)
+		}
+
+	case "gcp":
+	case "gcp-kms":
+		if s.params.GcpKmsUri != "" {
+			args = append(args, "--gcp-kms", s.params.GcpKmsUri)
+		}
+
+	case "aws":
+	case "aws-kms":
+	case "kms":
+		if s.params.KmsArns != "" {
+			args = append(args, "--kms", s.params.KmsArns)
+		}
+
+	case "pgp":
+		if s.params.PgpFingerprints != "" {
+			args = append(args, "--pgp", s.params.PgpFingerprints)
+		}
+	}
+
+	args = append(args, "-i")
+	args = append(args, s.params.File)
 
 	kv := map[string]string{}
 	for k, v := range s.data {
@@ -234,49 +346,31 @@ func (s *SopsSecretVault) Encrypt() error {
 		mode = fi.Mode()
 	}
 
+	if xfs.Exists(s.params.File) {
+		err = os.Remove(s.params.File)
+	}
+
 	// TODO: check if directory exists
 	if err = os.WriteFile(s.params.File, bits, mode); err != nil {
 		return err
 	}
 
-	bytes, err := encryptOutput(SopsEncryptParams{
-		File:       s.params.File,
-		FileType:   s.fileType,
-		Indent:     0,
-		ConfigPath: s.params.ConfileFile,
-		Age:        s.params.Age,
-		Kms:        s.params.Kms,
-		AzureKvUri: s.params.AzureKvUri,
-		VaultUri:   s.params.VaultUri,
-		PgpKey:     s.params.PgpPublicKey,
-	})
+	if !xfs.Exists(s.params.File) {
+		return fmt.Errorf("file not found: %s", s.params.File)
+	}
 
+	dir := filepath.Dir(s.params.File)
+	for k, v := range vars {
+		println(k, v)
+	}
+
+	cmd := xexec.New("sops", args...)
+	cmd.WithCwd(dir)
+	cmd.WithEnvMap(vars)
+
+	out, err := cmd.Output()
 	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.params.File, bytes, mode)
-}
-
-func (s *SopsSecretVault) Decrypt() error {
-
-	data, err := decrypt.File(s.params.File, s.fileType)
-	if err != nil {
-		return err
-	}
-
-	if s.fileType != "dotenv" {
-		return fmt.Errorf("unsupported file type: %s", s.fileType)
-	}
-
-	kv, err := godotenv.UnmarshalBytes(data)
-	if err != nil {
-		return err
-	}
-
-	s.data = map[string]interface{}{}
-	for k, v := range kv {
-		s.data[k] = v
+		return fmt.Errorf("error encrypting file: %s %s %s", err.Error(), out.Text(), out.ErrorText())
 	}
 
 	return nil

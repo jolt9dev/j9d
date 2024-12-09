@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"strings"
 
 	"github.com/jolt9dev/j9d/pkg/env"
 	"github.com/jolt9dev/j9d/pkg/types"
@@ -206,7 +205,7 @@ func Load(file string) (*ExecContext, error) {
 	}, nil
 }
 
-func loadSopsVault(vault *types.Vault, cwd string) (*sops.SopsSecretVault, error) {
+func loadSopsVault(vault *types.Vault, cwd string) (*sops.SopsCliSecretVault, error) {
 	u, err := url.Parse(vault.Uri)
 	if err != nil {
 		return nil, err
@@ -272,15 +271,15 @@ func loadSopsVault(vault *types.Vault, cwd string) (*sops.SopsSecretVault, error
 	}
 
 	params := &sops.SopsSecretVaultParams{
-		File:        sopsFile,
-		ConfileFile: configFile,
+		File:       sopsFile,
+		ConfigFile: configFile,
 	}
 
 	if recipients != "" {
-		r := strings.Split(recipients, ",")
-
+		params.Driver = "age"
 		params.Age = &sops.SopsAgeParams{
-			Recipients: r,
+			Recipients: recipients,
+			KeyFile:    sopsKeyFile,
 		}
 	}
 
