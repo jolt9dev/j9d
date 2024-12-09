@@ -1,0 +1,1 @@
+$env:SOPS_AGE_KEY_FILE="$PsScriptRoot/etc/keys.txt"

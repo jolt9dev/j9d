@@ -1,0 +1,8 @@
+name: whoami 
+compose:
+  include: 
+    - compose.yaml
+  sudo: true
+
+env:
+  TEST_VALUE: "random2"

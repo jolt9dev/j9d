@@ -1,0 +1,18 @@
+name: whoami 
+compose:
+  include: 
+    - compose.yaml
+  sudo: true
+
+vaults:
+  - name: "test"
+    uri: "sops://../etc/test.env?age-recipients=age1690jcga9k3976xdldnk7wpypdcpryq4afmt4st3zltvxand3z97qzdewun"
+    with:
+      age-key-file: 
+
+secrets:
+  - name: "SECRET_ONE"
+    vault: "test"
+
+env:
+  TEST_VALUE: "random2"

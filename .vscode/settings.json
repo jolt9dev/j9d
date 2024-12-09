@@ -3,5 +3,10 @@
         "ui.diagnostic.analyses": {
             "unusedparams": false
         }
+    },
+
+    "yaml.schemas": {
+        "Ansible Tasks File": "*/ta",
+        "https://raw.githubusercontent.com/ansible/ansible-lint/main/src/ansiblelint/schemas/ansible.json#/$defs/tasks": "*/ta"
     }
 }

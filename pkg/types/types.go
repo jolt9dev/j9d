@@ -174,7 +174,7 @@ func (j *Jolt9) ResolveInheritence(dir string) (*Jolt9, error) {
 			continue
 		}
 
-		next, err := fs.Resolve(dir, inherit)
+		next, err := fs.Resolve(inherit, dir)
 		if err != nil {
 			return j, err
 		}
@@ -406,8 +406,12 @@ type Dns struct {
 }
 
 type Hooks struct {
-	Before []Task `json:"before" yaml:"before"`
-	After  []Task `json:"after" yaml:"after"`
+	Before       []Task `json:"before" yaml:"before"`
+	After        []Task `json:"after" yaml:"after"`
+	BeforeDeploy []Task `json:"before-deploy" yaml:"before-deploy"`
+	AfterDeploy  []Task `json:"after-deploy" yaml:"after-deploy"`
+	BeforeRemove []Task `json:"before-remove" yaml:"before-remove"`
+	AfterRemove  []Task `json:"after-remove" yaml:"after-remove"`
 }
 
 type Task struct {

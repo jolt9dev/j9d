@@ -25,9 +25,11 @@ func registerDeployCmd(rootCmd *cobra.Command) {
 		Short: "deploys an application or set of services",
 		Long:  `The deploy command deploys an application or set of services by using a j9d.yaml file`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			params := deployments.DeployParams{
-				File: deployArgs.file,
-			}
+
+			params := deployments.DeployParams{}
+			params.File = deployArgs.file
+			params.Project = deployArgs.project
+			params.Target = deployArgs.target
 
 			return deployments.Deploy(params)
 		},

@@ -1,8 +1,13 @@
 
 
+j9d *ARGS:
+    @echo "Running j9d"
+    @echo "ARGS: {{ARGS}}"
+    @bin/j9d {{ARGS}}
+
 build:
     @echo "Building justfile"
-    @go build
+    @go build -o bin/j9d ./main.go
 
 test:
     @echo "Running tests"
@@ -15,3 +20,6 @@ test:
     @go test ./pkg/xfs
     @go test ./pkg/xrunes
     @go test ./pkg/xstrings
+
+update-bin:
+    cp -f bin/j9d ~/.local/bin 

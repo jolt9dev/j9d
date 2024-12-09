@@ -26,11 +26,11 @@ func registerRemoveCmd(rootCmd *cobra.Command) {
 		Short: "removes a deployment",
 		Long:  `The remove command removes a deployment by using a j9d.yaml file`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			params := deployments.RemoveParams{
-				Project:   removeArgs.project,
-				Workspace: removeArgs.target,
-				File:      removeArgs.file,
-			}
+			params := deployments.RemoveParams{}
+
+			params.File = removeArgs.file
+			params.Project = removeArgs.project
+			params.Target = removeArgs.target
 
 			return deployments.Remove(params)
 		},

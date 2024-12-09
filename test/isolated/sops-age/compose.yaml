@@ -1,0 +1,9 @@
+
+services:
+  whomai:
+    image: traefik/whoami:latest
+    ports:
+      - 3002:80
+    environment:
+      TEST: "${TEST_VALUE}"
+      SECRET_ONE: "${SECRET_ONE}"

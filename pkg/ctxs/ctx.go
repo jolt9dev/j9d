@@ -92,7 +92,7 @@ func Load(file string) (*ExecContext, error) {
 			for _, vt := range vaults {
 				v, err := vt.GetSecretValue(s.Key, nil)
 				if err == nil && v != "" {
-					println("found secret", s.Name, v)
+
 					secretValue = v
 					vars[s.Name] = secretValue
 					break
@@ -217,24 +217,31 @@ func loadSopsVault(vault *types.Vault, cwd string) (*sops.SopsSecretVault, error
 		sopsFile = u.Host + sopsFile
 	}
 
-	sopsFile, err = fs.Resolve(cwd, sopsFile)
+	sopsFile, err = fs.Resolve(sopsFile, cwd)
 	if err != nil {
 		return nil, err
 	}
-
-	recipients := u.Query().Get("age_recipients")
+	println(sopsFile)
+	recipients := u.Query().Get("age-recipients")
+	sopsKeyFile := u.Query().Get("age-key-file")
 	configFile := u.Query().Get("config")
 
-	key := ""
 	if recipients == "" {
-		v, ok := vault.With["age_recipients"]
+		v, ok := vault.With["age-recipients"]
 		if ok && v != nil {
 			recipients = v.(string)
 		}
 	}
 
-	if env.Has("SOPS_AGE_KEY") {
-		key = env.Get("SOPS_AGE_KEY")
+	if recipients == "" {
+		recipients = env.Get("SOPS_AGE_RECIPIENTS")
+	}
+
+	if sopsKeyFile == "" {
+		v, ok := vault.With["age-key-file"]
+		if ok && v != nil {
+			sopsKeyFile = v.(string)
+		}
 	}
 
 	if sopsFile == "" {
@@ -255,17 +262,25 @@ func loadSopsVault(vault *types.Vault, cwd string) (*sops.SopsSecretVault, error
 		return nil, fmt.Errorf("sops file not found")
 	}
 
+	if sopsKeyFile != "" {
+		n, err := fs.Resolve(sopsKeyFile, cwd)
+		if err != nil {
+			return nil, err
+		}
+
+		env.Set("SOPS_AGE_KEY_FILE", n)
+	}
+
 	params := &sops.SopsSecretVaultParams{
 		File:        sopsFile,
 		ConfileFile: configFile,
 	}
 
-	if recipients != "" || key != "" {
+	if recipients != "" {
 		r := strings.Split(recipients, ",")
 
 		params.Age = &sops.SopsAgeParams{
 			Recipients: r,
-			Key:        key,
 		}
 	}
 

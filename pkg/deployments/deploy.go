@@ -2,25 +2,38 @@ package deployments
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/jolt9dev/j9d/pkg/cps"
 	"github.com/jolt9dev/j9d/pkg/ctxs"
 	"github.com/jolt9dev/j9d/pkg/env"
 	"github.com/jolt9dev/j9d/pkg/platform"
 	exec "github.com/jolt9dev/j9d/pkg/xexec"
 	fs "github.com/jolt9dev/j9d/pkg/xfs"
+	"github.com/jolt9dev/j9d/pkg/xstrings"
 )
 
-type DeployParams struct {
+type CommonDeploymentParams struct {
 	Workspace string
 	Project   string
 	File      string
+	Target    string
+}
+
+type DeployParams struct {
+	CommonDeploymentParams
 }
 
 func Deploy(params DeployParams) error {
 
-	ctx, err := ctxs.Load(params.File)
+	file, err := getFile(params.CommonDeploymentParams)
+	if err != nil {
+		return err
+	}
+
+	ctx, err := ctxs.Load(file)
 	if err != nil {
 		return err
 	}
@@ -37,7 +50,85 @@ func Deploy(params DeployParams) error {
 	return nil
 }
 
+func getFile(params CommonDeploymentParams) (string, error) {
+	cwd, err := cps.Cwd()
+	if err != nil {
+		return "", err
+	}
+
+	if params.Project == "" && params.File == "" {
+		return filepath.Join(cwd, "j9d.yaml"), nil
+	}
+
+	if params.Project != "" {
+		if xstrings.Contains(params.Project, "/") {
+			parts := strings.Split(params.Project, "/")
+			if len(parts) == 2 {
+				// special project handling for local projects
+				// e.g. @cwd/project -> ./project/j9d.yaml
+				// j9d deploy -p @cwd/project -t dev => ./project/dev.j9d.yaml
+				if parts[0] == "." || parts[0] == "@cwd" {
+					if params.Target != "" {
+						f := fmt.Sprintf("%s.jd9.yaml", params.Target)
+						return fs.Resolve(filepath.Join(parts[1], f), cwd)
+					}
+
+					return fs.Resolve(filepath.Join(parts[1], "j9d.yaml"), cwd)
+				} else {
+					return "", fmt.Errorf("workspaces are not supported yet")
+				}
+			}
+		} else {
+			return "", fmt.Errorf("default workspaces are not supported yet")
+		}
+
+	}
+
+	if params.File != "" {
+		if params.File == "." {
+			return fs.Resolve("j9d.yaml", cwd)
+		}
+
+		// handle the case where you're in a root folder of many projects
+		// and you simply want to deploy the project using the subfolder name
+		// e.g.  j9d deploy -f myproject
+		if !filepath.IsAbs(params.File) {
+			ext := filepath.Ext(params.File)
+			if ext == "" {
+				base := filepath.Base(params.File)
+				if !strings.HasSuffix(base, "j9d") {
+					return fs.Resolve(filepath.Join(params.File, "j9d.yaml"), cwd)
+				} else {
+					return fs.Resolve(params.File+".yaml", cwd)
+				}
+			}
+		}
+
+		return fs.Resolve(params.File, cwd)
+	}
+
+	return fs.Resolve("j9d.yaml", cwd)
+}
+
 func deployCompose(ctx *ctxs.ExecContext) error {
+
+	hooks := ctx.Jolt9.Hooks
+
+	if hooks != nil {
+		if len(hooks.Before) > 0 {
+			err := RunHooks(ctx, hooks.Before)
+			if err != nil {
+				return err
+			}
+		}
+
+		if len(hooks.BeforeDeploy) > 0 {
+			err := RunHooks(ctx, hooks.BeforeDeploy)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	j9d := ctx.Jolt9
 	context := j9d.Compose.Context
@@ -60,7 +151,13 @@ func deployCompose(ctx *ctxs.ExecContext) error {
 			args = append(args, "-c", f)
 		}
 
-		cmd := exec.New("docker", args...)
+		proc := "docker"
+		if j9d.Compose.Sudo && !platform.IsWindows() && !cps.IsElevated() {
+			args = append([]string{"-E", "docker"}, args...)
+			proc = "sudo"
+		}
+
+		cmd := exec.New(proc, args...)
 		cmd.WithEnvMap(j9d.Env)
 
 		out, err := cmd.Run()
@@ -75,7 +172,7 @@ func deployCompose(ctx *ctxs.ExecContext) error {
 	} else {
 		args := []string{"--context", context, "compose", "--project-name", j9d.Name}
 		for _, f := range j9d.Compose.Include {
-			n, err := fs.Resolve(ctx.Cwd, f)
+			n, err := fs.Resolve(f, ctx.Cwd)
 
 			if err != nil {
 				return err
@@ -87,7 +184,7 @@ func deployCompose(ctx *ctxs.ExecContext) error {
 		args = append(args, "up", "-d")
 
 		proc := "docker"
-		if j9d.Compose.Sudo && !platform.IsWindows() {
+		if j9d.Compose.Sudo && !platform.IsWindows() && !cps.IsElevated() {
 			args = append([]string{"-E", "docker"}, args...)
 			proc = "sudo"
 		}
@@ -117,18 +214,37 @@ func deployCompose(ctx *ctxs.ExecContext) error {
 		}
 	}
 
+	if hooks != nil {
+		if len(hooks.After) > 0 {
+			err := RunHooks(ctx, hooks.After)
+			if err != nil {
+				return err
+			}
+		}
+
+		if len(hooks.AfterDeploy) > 0 {
+			err := RunHooks(ctx, hooks.AfterDeploy)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
 type RemoveParams struct {
-	Workspace string
-	Project   string
-	File      string
+	CommonDeploymentParams
 }
 
 func Remove(params RemoveParams) error {
 
-	ctx, err := ctxs.Load(params.File)
+	file, err := getFile(params.CommonDeploymentParams)
+	if err != nil {
+		return err
+	}
+
+	ctx, err := ctxs.Load(file)
 	if err != nil {
 		return err
 	}
@@ -191,6 +307,23 @@ func ensureContext(context string, ctx *ctxs.ExecContext) error {
 
 func removeCompose(ctx *ctxs.ExecContext) error {
 
+	hooks := ctx.Jolt9.Hooks
+	if hooks != nil {
+		if len(hooks.Before) > 0 {
+			err := RunHooks(ctx, hooks.Before)
+			if err != nil {
+				return err
+			}
+		}
+
+		if len(hooks.BeforeRemove) > 0 {
+			err := RunHooks(ctx, hooks.BeforeRemove)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	j9d := ctx.Jolt9
 	context := j9d.Compose.Context
 	if context == "" {
@@ -211,7 +344,7 @@ func removeCompose(ctx *ctxs.ExecContext) error {
 		}
 
 		proc := "docker"
-		if j9d.Compose.Sudo && !platform.IsWindows() {
+		if j9d.Compose.Sudo && !platform.IsWindows() && !cps.IsElevated() {
 			args = append([]string{"-E", "docker"}, args...)
 			proc = "sudo"
 		}
@@ -231,7 +364,7 @@ func removeCompose(ctx *ctxs.ExecContext) error {
 	} else {
 		args := []string{"--context", context, "compose", "--project-name", j9d.Name}
 		for _, f := range j9d.Compose.Include {
-			n, err := fs.Resolve(ctx.Cwd, f)
+			n, err := fs.Resolve(f, ctx.Cwd)
 
 			if err != nil {
 				return err
@@ -243,7 +376,7 @@ func removeCompose(ctx *ctxs.ExecContext) error {
 		args = append(args, "down")
 
 		proc := "docker"
-		if j9d.Compose.Sudo && !platform.IsWindows() {
+		if j9d.Compose.Sudo && !platform.IsWindows() && !cps.IsElevated() {
 			args = append([]string{"-E", "docker"}, args...)
 			proc = "sudo"
 		}
@@ -270,6 +403,22 @@ func removeCompose(ctx *ctxs.ExecContext) error {
 
 		if out.Code != 0 {
 			return fmt.Errorf("docker compose down failed: %s", out.ErrorText())
+		}
+	}
+
+	if hooks != nil {
+		if len(hooks.After) > 0 {
+			err := RunHooks(ctx, hooks.After)
+			if err != nil {
+				return err
+			}
+		}
+
+		if len(hooks.AfterRemove) > 0 {
+			err := RunHooks(ctx, hooks.AfterRemove)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
